@@ -1,81 +1,90 @@
-# Neon Rooftops 🐱🌙
+<div align="center">
 
-A tiny, original, browser-based endless runner — an adventurous cat sprinting
-across neon-lit rooftops at night. Runs as a plain web page **and** as a
-standalone Windows desktop app.
+# 🐱🌙 Neon Rooftops
+
+**An original pixel-art endless runner. A little cat sprints across neon rooftops at night, hopping chimneys, dishes, AC units and drones.**
+
+Play it in the browser, or grab the standalone Windows app. No install, no browser needed.
+
+![Release](https://img.shields.io/github/v/release/kingabzpro/neon-rooftops)
+![Platform](https://img.shields.io/badge/platform-windows%20%7C%20any%20browser-blue)
+![Dependencies](https://img.shields.io/badge/dependencies-zero-success)
+![License](https://img.shields.io/github/license/kingabzpro/neon-rooftops)
 
 ![screenshot](docs/screenshot.png)
 
-## Download & play (no install)
+</div>
 
-1. Go to [**Releases**](../../releases/latest)
-2. Download `NeonRooftops-<version>-win-x64.zip`
-3. Unzip it
-4. Double-click **`Neon Rooftops.exe`**
+> 🦖 **Born from reverse engineering.** We reverse engineered the original Chrome dinosaur game, pulled straight out of Chrome's own `resources.pak` on disk, studied exactly how it ticks, then rebuilt it from scratch as this game with 100% original code and pixel art. Same soul, new cat. No Chromium assets are used or shipped here.
 
-That's it — the app bundles its own embedded Chromium, so nothing else is
-installed and no browser window is opened. (The exe is unsigned, so Windows
-SmartScreen may ask "More info → Run anyway" the first time.)
+## 📥 Download & play
 
-Prefer the browser? Open `game/index.html` directly, or run a local server:
+1. Go to the [latest release](../../releases/latest)
+2. Grab `NeonRooftops-x.y.z-win-x64.zip`
+3. Unzip, double-click **Neon Rooftops.exe**
 
-```
-cd game && npx serve
-```
+That's it. The app bundles its own engine, so nothing gets installed and no browser window opens. The exe is unsigned, so Windows may show "More info → Run anyway" once. To play in a browser instead, just open `game/index.html`.
 
-## Controls
+## 🎮 Controls
 
-| Key | Action |
-|-----|--------|
-| `Space` / `↑` | Start · jump (hold = higher, release early = shorter hop) |
-| `↓` | Mid-air dive |
-| `Space` / `Enter` / tap | Restart after crashing |
+| Key | What it does |
+| --- | --- |
+| <kbd>Space</kbd> / <kbd>↑</kbd> | Start, jump. Hold for a higher jump, release early for a short hop |
+| <kbd>↓</kbd> | Dive while airborne |
+| <kbd>Space</kbd> / <kbd>Enter</kbd> / tap | Restart after a crash |
 
-## Gameplay
+## ✨ Features
 
-- Endless automatic running, score in the top-right (`HI` = personal best)
-- Difficulty ramps up: speed accelerates from 6 to 13, gaps widen with speed
-- Hurdles: small/large chimney stacks (1–3 clusters), satellite dishes,
-  wide AC units, and hovering drones that only appear once you're fast enough
-- Two-phase collision boxes (like the Chrome dino): grazing pixels won't kill you
-- Milestone flash + sound-free celebration every 100 points
+- 🏃 Endless auto-run with a score counter and saved personal best (`HI`)
+- 📈 Difficulty ramps up: speed climbs from 6 to 13, gaps widen as you go faster
+- 🧱 Five hurdle types: chimney stacks (1 to 3 in a cluster), satellite dishes, wide AC units, and speed-gated drones
+- 🐈 Fair collisions: two-phase hitboxes, so grazing pixels won't kill you
+- 🌃 Living night city: parallax skylines, twinkling stars, blinking antennas
+- 🎉 Milestone flash every 100 points
+- 🪶 Zero dependencies in the game itself, one HTML file + one JS file
 
-## How the mechanics were designed
+## 🔬 How it was made
 
-The tuning constants and core formulas (gravity-integrator jump with
-speed-scaled velocity, `width × speed + minGap × coefficient` obstacle gaps,
-`distance × 0.025` scoring, speed-gated obstacle types) were recovered by
-reverse-engineering the shipped Chrome offline game embedded in
-`resources.pak` of a local Chrome installation — then re-implemented from
-scratch with original art and code. No Chromium assets are used or included
-in this repository.
+The Chrome dino game ships compressed inside Chrome's `resources.pak`. We extracted it, mapped the whole engine statically (11,944 code nodes), and pulled out every formula and constant. Then we re-implemented them with original art.
 
-## Repository layout
-
-```
-game/        the game itself — index.html + game.js (zero dependencies)
-desktop/     Electron wrapper + build script (electron-packager)
-docs/        screenshot
+```mermaid
+flowchart LR
+    A["Chrome 155 on disk<br/>resources.pak"] -->|"resource 40019<br/>gzipped"| B["offline.js<br/>the hidden dino engine"]
+    B -->|"static analysis<br/>11,944 nodes mapped"| C["mechanics recovered:<br/>jump physics, gap formula,<br/>scoring, collision boxes"]
+    C -->|"rebuilt from scratch<br/>original code + art"| D["game/game.js<br/>Neon Rooftops"]
+    D -->|"electron-packager"| E["Neon Rooftops.exe"]
+    E -->|"GitHub Actions on tag"| F["release .zip<br/>one click away"]
 ```
 
-## Development
+## 🔄 How the game works
 
+```mermaid
+flowchart TD
+    IN["Space / tap pressed"] --> JUMP["jump starts:<br/>velocity scales with speed"]
+    LOOP["update loop, 60 fps"] --> PHYS["gravity pulls the cat down<br/>hold = higher, release = shorter"]
+    PHYS --> MOVE["obstacles scroll left<br/>new ones spawn by gap formula"]
+    MOVE --> HIT{"two-phase<br/>box collision"}
+    HIT -->|"clean"| SCORE["score = distance x 0.025<br/>speed slowly rises"]
+    SCORE --> LOOP
+    HIT -->|"crash"| OVER["game over,<br/>save HI score"]
+    OVER -->|"Space / Enter / tap"| LOOP
 ```
-# run the game's self-test (9 groups: physics, gaps, collision, spawns, restart)
+
+## 🛠️ Development
+
+```bash
+# run the 9-group self-test (physics, gaps, collision, spawns, restart)
 node game/game.js
 
-# run in Electron dev mode
-cd desktop && npm install && npm start
-
-# build the standalone Windows app
-cd desktop && npm run build
-# -> desktop/dist/Neon Rooftops-win32-x64/Neon Rooftops.exe
+# desktop app: dev mode and Windows build
+cd desktop
+npm install
+npm start        # dev
+npm run build    # -> dist/Neon Rooftops-win32-x64/Neon Rooftops.exe
 ```
 
-Releases are built automatically by GitHub Actions (`.github/workflows/release.yml`)
-whenever a `v*` tag is pushed.
+Pushing a `v*` tag makes GitHub Actions build and publish a release automatically.
 
-## License
+## 📄 License
 
-[MIT](LICENSE) — the game code and pixel art in this repository are original.
-"Neon Rooftops" is not affiliated with Google or the Chrome team.
+[MIT](LICENSE). Original code and art. Not affiliated with Google or the Chrome team. We just took their dino apart to learn from it, then let the cat out.
