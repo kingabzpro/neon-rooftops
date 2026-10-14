@@ -15,7 +15,7 @@ Play it in the browser, or grab the standalone Windows app. No install, no brows
 
 </div>
 
-> 🦖 **Born from reverse engineering.** We reverse engineered the original Chrome dinosaur game, pulled straight out of Chrome's own `resources.pak` on disk, studied exactly how it ticks, then rebuilt it from scratch as this game with 100% original code and pixel art. Same soul, new cat. No Chromium assets are used or shipped here.
+> 🦖 **Born from reverse engineering.** We reverse engineered the original Chrome dinosaur game, pulled straight out of Chrome's own `resources.pak` on disk with [REA](https://github.com/morluto/rea), a reverse engineering toolkit, studied exactly how it ticks, then rebuilt it from scratch as this game with 100% original code and pixel art. Same soul, new cat. No Chromium assets are used or shipped here.
 
 ## 📥 Download & play
 
@@ -45,12 +45,12 @@ That's it. The app bundles its own engine, so nothing gets installed and no brow
 
 ## 🔬 How it was made
 
-The Chrome dino game ships compressed inside Chrome's `resources.pak`. We extracted it, mapped the whole engine statically (11,944 code nodes), and pulled out every formula and constant. Then we re-implemented them with original art.
+The Chrome dino game ships compressed inside Chrome's `resources.pak`. We extracted it, mapped the whole engine statically with [REA](https://github.com/morluto/rea) (11,944 code nodes), and pulled out every formula and constant. Then we re-implemented them with original art.
 
 ```mermaid
 flowchart LR
     A["Chrome 155 on disk<br/>resources.pak"] -->|"resource 40019<br/>gzipped"| B["offline.js<br/>the hidden dino engine"]
-    B -->|"static analysis<br/>11,944 nodes mapped"| C["mechanics recovered:<br/>jump physics, gap formula,<br/>scoring, collision boxes"]
+    B -->|"REA static analysis<br/>11,944 nodes mapped"| C["mechanics recovered:<br/>jump physics, gap formula,<br/>scoring, collision boxes"]
     C -->|"rebuilt from scratch<br/>original code + art"| D["game/game.js<br/>Neon Rooftops"]
     D -->|"electron-packager"| E["Neon Rooftops.exe"]
     E -->|"GitHub Actions on tag"| F["release .zip<br/>one click away"]

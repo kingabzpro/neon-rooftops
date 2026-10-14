@@ -1,5 +1,5 @@
 // ============================================================================
-// NEON ROOFTOPS — an original endless runner
+// NEON ROOFTOPS - an original endless runner
 //
 // Core mechanics are ported from the shipped Chrome dino engine (offline.js,
 // Chrome 155.0.8059.41, resource 40019 of resources.pak) that we reverse-
@@ -76,7 +76,7 @@ function mulberry32(seed) {
 }
 
 // ============================================================================
-// ORIGINAL PIXEL ART — the cat. String maps, one char per pixel.
+// ORIGINAL PIXEL ART - the cat. String maps, one char per pixel.
 // .  transparent   o orange   d dark-orange stripe   w cream
 // g green eye      k black    p pink
 // ============================================================================
@@ -164,7 +164,7 @@ const CAT_FRAMES = {
         "....kk....kk...."],
 };
 
-// cat collision sub-boxes (px, relative to 32x28 sprite) — the dino uses
+// cat collision sub-boxes (px, relative to 32x28 sprite) - the dino uses
 // per-sprite sub-boxes so grazing pixels don't kill you
 const CAT_BOXES_RUNNING = [
   { x: 16, y: 2, width: 15, height: 10 },  // head
@@ -177,7 +177,7 @@ const CAT_BOXES_JUMPING = [
 ];
 
 // ============================================================================
-// OBSTACLES — chimneys (ground, like cacti) and a drone (air, like ptero).
+// OBSTACLES - chimneys (ground, like cacti) and a drone (air, like ptero).
 // multipleSpeed/minSpeed are dino concepts: clusters unlock with speed,
 // drone only appears once you're fast.
 // ============================================================================
@@ -315,7 +315,7 @@ function addNewObstacle(g) {
 }
 
 // dino Runner.checkForCollision + Obstacle sub-boxes: outer inset AABB first,
-// then sub-boxes — grazing pixels don't kill you
+// then sub-boxes - grazing pixels don't kill you
 function checkForCollision(g, ob) {
   const catTop = g.roofY - CAT_H - g.cat.y;
   const catOuter = { x: CAT_X + 1, y: catTop + 1, width: CAT_W - 2, height: CAT_H - 2 };
@@ -647,7 +647,7 @@ if (IS_BROWSER) {
 }
 
 // ============================================================================
-// SELF-TEST (node game/game.js) — every mechanic ported from dino gets a check
+// SELF-TEST (node game/game.js) - every mechanic ported from dino gets a check
 // ============================================================================
 if (!IS_BROWSER) {
   const assert = require('assert');
