@@ -1,0 +1,39 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build standalone app
+        working-directory: desktop
+        run: |
+          npm install
+          npm run build
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v',''
+          if ($ver -eq "" -or $ver -eq "main") { $ver = "0.0.0-dev" }
+          Compress-Archive -Path "desktop\dist\Neon Rooftops-win32-x64" -DestinationPath "NeonRooftops-$ver-win-x64.zip"
+          Get-Item "NeonRooftops-$ver-win-x64.zip"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: NeonRooftops-*-win-x64.zip
+          generate_release_notes: true

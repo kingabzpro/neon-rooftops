@@ -1,0 +1,15 @@
+# project-local artifacts
+_extracted_chrome155/
+*.b64
+
+# node / electron build output
+node_modules/
+desktop/dist/
+
+# machine-specific launcher (absolute local paths)
+game/kat.cmd
+
+# os noise
+Thumbs.db
+.DS_Store
+desktop/game/
