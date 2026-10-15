@@ -1,7 +1,7 @@
 {
   "name": "neon-rooftops",
   "productName": "Neon Rooftops",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Neon Rooftops - endless runner (standalone desktop build)",
   "main": "main.js",
   "scripts": {

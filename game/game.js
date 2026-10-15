@@ -68,7 +68,6 @@ function getRandomNum(min, max) {          // dino getRandomNum: inclusive
 // --- leaderboard storage: real SQLite via sql.js, db passed in so this -----
 // --- works identically in the browser, Electron, and the Node self-test ---
 const DB_STORE_KEY = 'neonRoofDb';
-const NAME_STORE_KEY = 'neonRoofName';
 const SCORES_DDL = 'CREATE TABLE IF NOT EXISTS scores(' +
   'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, ' +
   'score INTEGER NOT NULL, created_at TEXT DEFAULT (datetime(\'now\')))';
@@ -470,10 +469,7 @@ if (IS_BROWSER) {
 
   // --- leaderboard (SQLite via sql.js, persisted to localStorage) ---
   let db = null;
-  let playerName = localStorage.getItem(NAME_STORE_KEY) || '';
   const overlayEl = document.getElementById('overlay');
-  const formEl = document.getElementById('nameForm');
-  const inputEl = document.getElementById('nameInput');
   const boardEl = document.getElementById('board');
   const finalEl = document.getElementById('finalScore');
   const hintEl = document.getElementById('overlayHint');
@@ -482,35 +478,15 @@ if (IS_BROWSER) {
     if (!db) return;
     const rows = dbTopScores(db, 5);
     boardEl.innerHTML = rows.length
-      ? rows.map(([n, s], i) => '<li><span>' + (i + 1) + '. ' + escapeHtml(n) + '</span><span>' + String(s).padStart(5, '0') + '</span></li>').join('')
+      ? rows.map(([, s], i) => '<li><span>' + (i + 1) + '</span><span>' + String(s).padStart(5, '0') + '</span></li>').join('')
       : '<li class="empty">no runs yet, be the first</li>';
-  }
-  function submitScore(name) {
-    playerName = name;
-    localStorage.setItem(NAME_STORE_KEY, name);
-    if (db) { dbAddScore(db, name, g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); }
-    formEl.classList.add('hidden');
-    hintEl.textContent = 'SPACE / ENTER to play again';
-    refreshBoard();
   }
   function onGameOver() {
     finalEl.textContent = 'SCORE ' + String(g.score).padStart(5, '0') + ' \u00b7 BEST ' + String(g.hiScore).padStart(5, '0');
-    if (playerName) {
-      submitScore(playerName);              // returning player: save right away
-    } else {
-      formEl.classList.remove('hidden');    // first visit: ask, then save
-      inputEl.value = '';
-      hintEl.textContent = 'type a name + Enter to save this run';
-      setTimeout(() => inputEl.focus(), 60);
-    }
+    if (db) { dbAddScore(db, 'you', g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); }
     overlayEl.classList.remove('hidden');
     refreshBoard();
   }
-  formEl.addEventListener('submit', e => {
-    e.preventDefault();
-    submitScore((inputEl.value.trim() || 'guest').slice(0, 12));
-    inputEl.blur();
-  });
   document.getElementById('againBtn').addEventListener('click', () => restart(g));
 
   (async () => {
@@ -821,9 +797,9 @@ if (IS_BROWSER) {
         ctx.fillStyle = '#565e8c';
         ctx.fillText('TOP RUNS', 60, 156);
         ctx.font = '13px "Courier New", monospace';
-        dbTopScores(db, 5).forEach(([n, s], i) => {
+        dbTopScores(db, 5).forEach(([, s], i) => {
           ctx.fillStyle = i === 0 ? '#7ef0ff' : '#8b93c9';
-          ctx.fillText((i + 1) + '. ' + n, 60, 174 + i * 16);
+          ctx.fillText(String(i + 1) + '.', 60, 174 + i * 16);
           ctx.textAlign = 'right'; ctx.fillText(String(s).padStart(5, '0'), 230, 174 + i * 16); ctx.textAlign = 'left';
         });
       }
@@ -831,11 +807,6 @@ if (IS_BROWSER) {
       ctx.fillStyle = '#ff8fb0';
       ctx.font = 'bold 22px "Courier New", monospace';
       ctx.fillText('GAME OVER', 60, 96);
-    }
-    if (playerName) {
-      ctx.font = 'bold 13px "Courier New", monospace';
-      ctx.fillStyle = '#565e8c';
-      ctx.fillText(playerName, 20, 30);
     }
   }
 
