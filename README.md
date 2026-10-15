@@ -40,7 +40,10 @@ That's it. The app bundles its own engine, so nothing gets installed and no brow
 - 🧱 Five hurdle types: chimney stacks (1 to 3 in a cluster), satellite dishes, wide AC units, and speed-gated drones
 - 🐈 Fair collisions: two-phase hitboxes, so grazing pixels won't kill you
 - 🌃 Living night city: parallax skylines, twinkling stars, blinking antennas
-- 🎉 Milestone flash every 100 points
+- 🎉 Milestone confetti burst every 100 points
+- 🌈 The night sky evolves as you run: indigo, magenta dusk, teal dawn
+- 🏆 Local leaderboard (real SQLite) with a game-over name prompt
+- 💥 Crash juice: screen shake, particles, squash and stretch
 - 🪶 Zero dependencies in the game itself, one HTML file + one JS file
 
 ## 🔬 How it was made
