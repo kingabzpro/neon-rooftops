@@ -100,9 +100,6 @@ function b64ToBytes(b64) {
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   return u8;
 }
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 // deterministic rng for scenery only (so tests / screenshots are stable)
 function mulberry32(seed) {
@@ -272,6 +269,7 @@ const OBSTACLE_TYPES = {
     boxes: [{ x: 2, y: 0, width: 26, height: 4 }, { x: 6, y: 4, width: 18, height: 10 }],
   },
 };
+const OBSTACLE_NAMES = Object.keys(OBSTACLE_TYPES);
 
 // ============================================================================
 // GAME STATE + CORE LOOP (pure enough to run headless)
@@ -349,10 +347,9 @@ function updateJump(g, deltaTime) {
 // dino Horizon.addNewObstacle: random type, dupe guard, minSpeed gate,
 // cluster size downgraded until speed allows (multipleSpeed)
 function addNewObstacle(g) {
-  const names = Object.keys(OBSTACLE_TYPES);
   let type = null, name;
   for (let attempts = 0; attempts < 8 && !type; attempts++) {
-    name = names[getRandomNum(0, names.length - 1)];
+    name = OBSTACLE_NAMES[getRandomNum(0, OBSTACLE_NAMES.length - 1)];
     const candidate = OBSTACLE_TYPES[name];
     if (g.speed < candidate.minSpeed) continue;            // drone gate
     const duplicated = g.history.slice(0, MAX_OBSTACLE_DUPLICATION).includes(name);
@@ -468,26 +465,16 @@ if (IS_BROWSER) {
   let g = createGame(W, H, Number(localStorage.getItem('neonRoofHi') || 0));
 
   // --- leaderboard (SQLite via sql.js, persisted to localStorage) ---
+  // top runs are cached and only re-queried when they change (not every frame)
   let db = null;
-  const overlayEl = document.getElementById('overlay');
-  const boardEl = document.getElementById('board');
-  const finalEl = document.getElementById('finalScore');
-  const hintEl = document.getElementById('overlayHint');
-
-  function refreshBoard() {
-    if (!db) return;
-    const rows = dbTopScores(db, 5);
-    boardEl.innerHTML = rows.length
-      ? rows.map(([, s], i) => '<li><span>' + (i + 1) + '</span><span>' + String(s).padStart(5, '0') + '</span></li>').join('')
-      : '<li class="empty">no runs yet, be the first</li>';
+  let topCache = [];
+  function refreshTop() {
+    topCache = db ? dbTopScores(db, 5) : [];
   }
   function onGameOver() {
-    finalEl.textContent = 'SCORE ' + String(g.score).padStart(5, '0') + ' \u00b7 BEST ' + String(g.hiScore).padStart(5, '0');
     if (db) { dbAddScore(db, 'you', g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); }
-    overlayEl.classList.remove('hidden');
-    refreshBoard();
+    refreshTop();
   }
-  document.getElementById('againBtn').addEventListener('click', () => restart(g));
 
   (async () => {
     try {
@@ -497,7 +484,7 @@ if (IS_BROWSER) {
         try { db = new SQL.Database(b64ToBytes(saved)); db.run(SCORES_DDL); } catch (e) { db = null; }
       }
       if (!db) db = openScoresDb(SQL);
-      refreshBoard();
+      refreshTop();
     } catch (e) {
       console.warn('leaderboard unavailable, playing without it:', e);
     }
@@ -550,6 +537,7 @@ if (IS_BROWSER) {
 
   // --- juice: particles, streaks, shooting stars ---
   const particles = [];
+  const SPARKLE_COLORS = ['#7ef0ff', '#ff8fb0', '#ffe9c4', '#5df08a'];
   function spawnBurst(x, y, n, colors, power, up) {
     for (let i = 0; i < n; i++) {
       const ang = up ? (-Math.PI / 2) + (Math.random() - 0.5) * 2.2 : Math.random() * Math.PI * 2;
@@ -561,6 +549,17 @@ if (IS_BROWSER) {
         color: colors[Math.floor(Math.random() * colors.length)],
       });
     }
+  }
+  // small twinkly bit trailing the cat (original art, cheap: one particle)
+  function spawnSparkle(x, y) {
+    particles.push({
+      x, y,
+      vx: -0.4 - Math.random() * 0.7,
+      vy: -0.3 + Math.random() * 0.6,
+      life: 240 + Math.random() * 260, max: 500,
+      size: Math.random() > 0.55 ? 2 : 1, grav: 0,
+      color: SPARKLE_COLORS[(Math.random() * SPARKLE_COLORS.length) | 0],
+    });
   }
   function stepParticles(dt) {
     const fe = dt / MS_PER_FRAME;
@@ -770,43 +769,63 @@ if (IS_BROWSER) {
     ctx.drawImage(sprites[name], CAT_X - (sw - CAT_W) / 2, g.roofY - sh - g.cat.y, sw, sh);
   }
 
+  // fonts hoisted so we are not rebuilding font strings every frame
+  const FONT_BOLD_22 = 'bold 22px "Courier New", monospace';
+  const FONT_BOLD_16 = 'bold 16px "Courier New", monospace';
+  const FONT_BOLD_14 = 'bold 14px "Courier New", monospace';
+  const FONT_BOLD_13 = 'bold 13px "Courier New", monospace';
+  const FONT_13 = '13px "Courier New", monospace';
+  const pad5 = (n) => String(n).padStart(5, '0');
+
+  // top-runs list, drawn straight on the canvas (no HTML overlay)
+  function drawTopRuns(x, y) {
+    if (!topCache.length) return;
+    ctx.font = FONT_BOLD_13;
+    ctx.fillStyle = '#565e8c';
+    ctx.fillText('TOP RUNS', x, y);
+    ctx.font = FONT_13;
+    topCache.forEach(([, s], i) => {
+      const ry = y + 18 + i * 16;
+      ctx.fillStyle = i === 0 ? '#7ef0ff' : '#8b93c9';
+      ctx.fillText((i + 1) + '.', x, ry);
+      ctx.textAlign = 'right'; ctx.fillText(pad5(s), x + 170, ry); ctx.textAlign = 'left';
+    });
+  }
+
   function drawHUD() {
-    ctx.font = 'bold 16px "Courier New", monospace';
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#cdd3ff';
-    const pad = (n) => String(n).padStart(5, '0');
+    ctx.font = FONT_BOLD_16;
     if (g.hiScore > 0) {
       ctx.fillStyle = '#8b93c9';
-      ctx.fillText('HI ' + pad(g.hiScore), W - 110, 30);
+      ctx.fillText('HI ' + pad5(g.hiScore), W - 110, 30);
     }
     const flashOff = g.achievement && Math.floor(g.flashTimer / (FLASH_DURATION / 2)) % 2 === 1;
     if (!flashOff) {
       ctx.fillStyle = '#eef1ff';
-      ctx.fillText(pad(g.score), W - 20, 30);
+      ctx.fillText(pad5(g.score), W - 20, 30);
     }
     ctx.textAlign = 'left';
     if (!g.started) {
+      ctx.font = FONT_BOLD_22;
       ctx.fillStyle = '#eef1ff';
-      ctx.font = 'bold 22px "Courier New", monospace';
       ctx.fillText('NEON ROOFTOPS', 60, 96);
-      ctx.font = 'bold 14px "Courier New", monospace';
+      ctx.font = FONT_BOLD_14;
       ctx.fillStyle = '#8b93c9';
       if (Math.floor(performance.now() / 600) % 2) ctx.fillText('PRESS SPACE / TAP TO RUN', 60, 124);
-      if (db) {                             // local hall of fame on the title screen
-        ctx.font = 'bold 13px "Courier New", monospace';
-        ctx.fillStyle = '#565e8c';
-        ctx.fillText('TOP RUNS', 60, 156);
-        ctx.font = '13px "Courier New", monospace';
-        dbTopScores(db, 5).forEach(([, s], i) => {
-          ctx.fillStyle = i === 0 ? '#7ef0ff' : '#8b93c9';
-          ctx.fillText(String(i + 1) + '.', 60, 174 + i * 16);
-          ctx.textAlign = 'right'; ctx.fillText(String(s).padStart(5, '0'), 230, 174 + i * 16); ctx.textAlign = 'left';
-        });
-      }
+      drawTopRuns(60, 156);
     } else if (g.crashed) {
+      ctx.font = FONT_BOLD_22;
       ctx.fillStyle = '#ff8fb0';
-      ctx.font = 'bold 22px "Courier New", monospace';
-      ctx.fillText('GAME OVER', 60, 96);
+      ctx.fillText('GAME OVER', 60, 74);
+      ctx.font = FONT_BOLD_14;
+      ctx.fillStyle = '#cdd3ff';
+      ctx.fillText('SCORE ' + pad5(g.score) + '   BEST ' + pad5(g.hiScore), 60, 98);
+      drawTopRuns(60, 128);
+      ctx.font = FONT_BOLD_14;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#8b93c9';
+      if (Math.floor(performance.now() / 600) % 2) ctx.fillText('SPACE / ENTER / TAP TO PLAY AGAIN', W / 2, 278);
+      ctx.textAlign = 'left';
     }
   }
 
@@ -829,19 +848,22 @@ if (IS_BROWSER) {
   let last = performance.now();
   let prevHi = g.hiScore;
   let prevJumping = false, prevCrashed = false, prevAchievement = false;
-  let shakeUntil = 0, crashFlashUntil = 0, nextRunDust = 0;
+  let shakeUntil = 0, crashFlashUntil = 0, nextRunDust = 0, nextSparkleAt = 0;
   let wasCrashed = false;
+  const DRAW = { chimneySmall: drawChimney, chimneyLarge: drawChimney, dish: drawDish, ac: drawAC, drone: drawDrone };
   function frame(now) {
     const dt = now - last; last = now;
     step(g, dt);
 
-    // leaderboard overlay transitions
+    // save the run the moment we crash
     if (g.crashed && !wasCrashed) onGameOver();
-    if (wasCrashed && !g.crashed) overlayEl.classList.add('hidden'); // any restart hides it
     wasCrashed = g.crashed;
 
     // juice transitions
-    if (!prevJumping && g.cat.jumping) stretchUntil = g.timeMs + 130;           // takeoff: stretch
+    if (!prevJumping && g.cat.jumping) {                                        // takeoff: stretch + sparkles
+      stretchUntil = g.timeMs + 130;
+      for (let i = 0; i < 4; i++) spawnSparkle(CAT_X + 4 + Math.random() * 20, g.roofY - g.cat.y - 8 - Math.random() * 12);
+    }
     if (prevJumping && !g.cat.jumping && !g.crashed) {                         // landing: squash + dust
       squashUntil = g.timeMs + 130;
       spawnBurst(CAT_X + CAT_W / 2, g.roofY - 2, 8, ['#8b93c9', '#565e8c', '#cdd3ff'], 1.6, true);
@@ -850,6 +872,12 @@ if (IS_BROWSER) {
       if (now > nextRunDust) {
         nextRunDust = now + 170 + Math.random() * 160;
         spawnBurst(CAT_X + 2, g.roofY - 2, 1, ['#565e8c'], 0.8, true);
+      }
+    }
+    if (g.started && !g.crashed) {                                             // sparkle trail off the cat
+      if (now > nextSparkleAt) {
+        nextSparkleAt = now + 80 + Math.random() * 120;
+        spawnSparkle(CAT_X + 2 + Math.random() * 8, g.roofY - g.cat.y - 8 - Math.random() * 16);
       }
     }
     if (!prevAchievement && g.achievement) {                                   // milestone burst
@@ -873,7 +901,6 @@ if (IS_BROWSER) {
     drawBackground(now, dt);
     drawSpeedLines(dt);
     drawRoof();
-    const DRAW = { chimneySmall: drawChimney, chimneyLarge: drawChimney, dish: drawDish, ac: drawAC, drone: drawDrone };
     for (const ob of g.obstacles) DRAW[ob.name](ob);
     drawCat();
     drawParticles();
