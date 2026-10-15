@@ -31,7 +31,7 @@ That's it. The app bundles its own engine, so nothing gets installed and no brow
 | --- | --- |
 | <kbd>Space</kbd> / <kbd>↑</kbd> | Start, jump. Hold for a higher jump, release early for a short hop |
 | <kbd>↓</kbd> | Dive while airborne |
-| <kbd>Space</kbd> / <kbd>Enter</kbd> / tap | Restart after a crash |
+| <kbd>Space</kbd> / <kbd>Enter</kbd> / tap | After a crash: type a name, then save and restart |
 
 ## ✨ Features
 
@@ -42,7 +42,7 @@ That's it. The app bundles its own engine, so nothing gets installed and no brow
 - 🌃 Living night city: parallax skylines, twinkling stars, blinking antennas
 - 🎉 Milestone confetti burst every 100 points
 - 🌈 The night sky evolves as you run: indigo, magenta dusk, teal dawn
-- 🏆 Local leaderboard (real SQLite), scores auto-save at game over
+- 🏆 Local top-five leaderboard (real SQLite), saved under the name you type at game over
 - 💥 Crash juice: screen shake, particles, squash and stretch
 - 🪶 Zero dependencies in the game itself, one HTML file + one JS file
 

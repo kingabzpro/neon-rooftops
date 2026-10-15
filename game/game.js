@@ -468,12 +468,22 @@ if (IS_BROWSER) {
   // top runs are cached and only re-queried when they change (not every frame)
   let db = null;
   let topCache = [];
+  let nameEntry = '';                        // name being typed for the run that just ended
+  let awaitingName = false;                  // true between the crash and saving the run
   function refreshTop() {
     topCache = db ? dbTopScores(db, 5) : [];
   }
-  function onGameOver() {
-    if (db) { dbAddScore(db, 'you', g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); }
+  function onGameOver() {                    // crash: hold the run and ask for a name
+    nameEntry = '';
+    awaitingName = true;
     refreshTop();
+  }
+  function submitRun() {                     // save the run under the typed name, then restart
+    if (!awaitingName) return;
+    awaitingName = false;
+    if (db) { dbAddScore(db, nameEntry.trim() || 'you', g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); refreshTop(); }
+    nameEntry = '';
+    restart(g);
   }
 
   (async () => {
@@ -784,11 +794,11 @@ if (IS_BROWSER) {
     ctx.fillStyle = '#565e8c';
     ctx.fillText('TOP RUNS', x, y);
     ctx.font = FONT_13;
-    topCache.forEach(([, s], i) => {
+    topCache.forEach(([name, s], i) => {
       const ry = y + 18 + i * 16;
       ctx.fillStyle = i === 0 ? '#7ef0ff' : '#8b93c9';
-      ctx.fillText((i + 1) + '.', x, ry);
-      ctx.textAlign = 'right'; ctx.fillText(pad5(s), x + 170, ry); ctx.textAlign = 'left';
+      ctx.fillText((i + 1) + '. ' + name, x, ry);
+      ctx.textAlign = 'right'; ctx.fillText(pad5(s), x + 210, ry); ctx.textAlign = 'left';
     });
   }
 
@@ -805,14 +815,16 @@ if (IS_BROWSER) {
       ctx.fillText(pad5(g.score), W - 20, 30);
     }
     ctx.textAlign = 'left';
+    const t = performance.now();
+    const hintOn = Math.floor(t / 600) % 2 === 1;
     if (!g.started) {
       ctx.font = FONT_BOLD_22;
       ctx.fillStyle = '#eef1ff';
-      ctx.fillText('NEON ROOFTOPS', 60, 96);
+      ctx.fillText('NEON ROOFTOPS', 60, 70);
       ctx.font = FONT_BOLD_14;
       ctx.fillStyle = '#8b93c9';
-      if (Math.floor(performance.now() / 600) % 2) ctx.fillText('PRESS SPACE / TAP TO RUN', 60, 124);
-      drawTopRuns(60, 156);
+      if (hintOn) ctx.fillText('PRESS SPACE / TAP TO RUN', 60, 100);
+      drawTopRuns(60, 128);
     } else if (g.crashed) {
       ctx.font = FONT_BOLD_22;
       ctx.fillStyle = '#ff8fb0';
@@ -821,18 +833,29 @@ if (IS_BROWSER) {
       ctx.fillStyle = '#cdd3ff';
       ctx.fillText('SCORE ' + pad5(g.score) + '   BEST ' + pad5(g.hiScore), 60, 98);
       drawTopRuns(60, 128);
-      ctx.font = FONT_BOLD_14;
       ctx.textAlign = 'center';
+      ctx.font = FONT_BOLD_16;
+      ctx.fillStyle = '#eef1ff';
+      ctx.fillText('YOUR NAME: ' + nameEntry + (Math.floor(t / 450) % 2 ? ' ' : '_'), W / 2, 250);
+      ctx.font = FONT_BOLD_14;
       ctx.fillStyle = '#8b93c9';
-      if (Math.floor(performance.now() / 600) % 2) ctx.fillText('SPACE / ENTER / TAP TO PLAY AGAIN', W / 2, 278);
+      if (hintOn) ctx.fillText('TYPE A NAME, THEN ENTER / SPACE / TAP TO SAVE & PLAY AGAIN', W / 2, 278);
       ctx.textAlign = 'left';
     }
   }
 
   // --- input ---
   addEventListener('keydown', e => {
-    const t = e.target;                      // never steal keys from the name form
+    const t = e.target;                      // never steal keys from a form field
     if (t && (t.tagName === 'INPUT' || t.tagName === 'BUTTON' || t.isContentEditable)) return;
+    if (g.crashed && awaitingName) {         // typing the name for this run
+      if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); submitRun(); }
+      else if (e.keyCode === 8) { e.preventDefault(); nameEntry = nameEntry.slice(0, -1); }
+      else if (e.key && e.key.length === 1 && nameEntry.length < 12 && /[A-Za-z0-9_.-]/.test(e.key)) {
+        nameEntry += e.key; e.preventDefault();
+      }
+      return;
+    }
     if (JUMP_KEYS.includes(e.keyCode)) { e.preventDefault(); jumpDown(g); }
     else if (e.keyCode === DUCK_KEY) { e.preventDefault(); diveDown(g, true); }
     else if (e.keyCode === 13 && g.crashed) restart(g);
@@ -841,7 +864,7 @@ if (IS_BROWSER) {
     if (JUMP_KEYS.includes(e.keyCode)) jumpUp(g);
     else if (e.keyCode === DUCK_KEY) diveDown(g, false);
   });
-  canvas.addEventListener('pointerdown', e => { e.preventDefault(); jumpDown(g); });
+  canvas.addEventListener('pointerdown', e => { e.preventDefault(); if (g.crashed && awaitingName) submitRun(); else jumpDown(g); });
   addEventListener('pointerup', () => jumpUp(g));
 
   // --- main loop (dino: requestAnimationFrame-driven update) ---
