@@ -65,6 +65,46 @@ function getRandomNum(min, max) {          // dino getRandomNum: inclusive
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// --- leaderboard storage: real SQLite via sql.js, db passed in so this -----
+// --- works identically in the browser, Electron, and the Node self-test ---
+const DB_STORE_KEY = 'neonRoofDb';
+const NAME_STORE_KEY = 'neonRoofName';
+const SCORES_DDL = 'CREATE TABLE IF NOT EXISTS scores(' +
+  'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, ' +
+  'score INTEGER NOT NULL, created_at TEXT DEFAULT (datetime(\'now\')))';
+
+function openScoresDb(SQL) {
+  const db = new SQL.Database();
+  db.run(SCORES_DDL);
+  return db;
+}
+function dbAddScore(db, name, score) {
+  db.run('INSERT INTO scores(name, score) VALUES (?, ?)', [name, score]);
+}
+function dbTopScores(db, n) {
+  const stmt = db.prepare('SELECT name, score FROM scores ORDER BY score DESC, id ASC LIMIT ?');
+  stmt.bind([n]);
+  const rows = [];
+  while (stmt.step()) { const r = stmt.getAsObject(); rows.push([r.name, r.score]); }
+  stmt.free();
+  return rows;
+}
+
+function bytesToB64(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return typeof btoa === 'function' ? btoa(s) : Buffer.from(s, 'binary').toString('base64');
+}
+function b64ToBytes(b64) {
+  const bin = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // deterministic rng for scenery only (so tests / screenshots are stable)
 function mulberry32(seed) {
   return function () {
@@ -405,6 +445,65 @@ if (IS_BROWSER) {
   const W = canvas.width, H = canvas.height;
   let g = createGame(W, H, Number(localStorage.getItem('neonRoofHi') || 0));
 
+  // --- leaderboard (SQLite via sql.js, persisted to localStorage) ---
+  let db = null;
+  let playerName = localStorage.getItem(NAME_STORE_KEY) || '';
+  const overlayEl = document.getElementById('overlay');
+  const formEl = document.getElementById('nameForm');
+  const inputEl = document.getElementById('nameInput');
+  const boardEl = document.getElementById('board');
+  const finalEl = document.getElementById('finalScore');
+  const hintEl = document.getElementById('overlayHint');
+
+  function refreshBoard() {
+    if (!db) return;
+    const rows = dbTopScores(db, 5);
+    boardEl.innerHTML = rows.length
+      ? rows.map(([n, s], i) => '<li><span>' + (i + 1) + '. ' + escapeHtml(n) + '</span><span>' + String(s).padStart(5, '0') + '</span></li>').join('')
+      : '<li class="empty">no runs yet, be the first</li>';
+  }
+  function submitScore(name) {
+    playerName = name;
+    localStorage.setItem(NAME_STORE_KEY, name);
+    if (db) { dbAddScore(db, name, g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); }
+    formEl.classList.add('hidden');
+    hintEl.textContent = 'SPACE / ENTER to play again';
+    refreshBoard();
+  }
+  function onGameOver() {
+    finalEl.textContent = 'SCORE ' + String(g.score).padStart(5, '0') + ' \u00b7 BEST ' + String(g.hiScore).padStart(5, '0');
+    if (playerName) {
+      submitScore(playerName);              // returning player: save right away
+    } else {
+      formEl.classList.remove('hidden');    // first visit: ask, then save
+      inputEl.value = '';
+      hintEl.textContent = 'type a name + Enter to save this run';
+      setTimeout(() => inputEl.focus(), 60);
+    }
+    overlayEl.classList.remove('hidden');
+    refreshBoard();
+  }
+  formEl.addEventListener('submit', e => {
+    e.preventDefault();
+    submitScore((inputEl.value.trim() || 'guest').slice(0, 12));
+    inputEl.blur();
+  });
+  document.getElementById('againBtn').addEventListener('click', () => restart(g));
+
+  (async () => {
+    try {
+      const SQL = await initSqlJs({ wasmBinary: b64ToBytes(SQL_WASM_B64) });
+      const saved = localStorage.getItem(DB_STORE_KEY);
+      if (saved) {
+        try { db = new SQL.Database(b64ToBytes(saved)); db.run(SCORES_DDL); } catch (e) { db = null; }
+      }
+      if (!db) db = openScoresDb(SQL);
+      refreshBoard();
+    } catch (e) {
+      console.warn('leaderboard unavailable, playing without it:', e);
+    }
+  })();
+
   // bake cat frames to offscreen canvases; validate art dims while at it
   const sprites = {};
   for (const [name, rows] of Object.entries(CAT_FRAMES)) {
@@ -605,18 +704,33 @@ if (IS_BROWSER) {
       ctx.font = 'bold 14px "Courier New", monospace';
       ctx.fillStyle = '#8b93c9';
       if (Math.floor(performance.now() / 600) % 2) ctx.fillText('PRESS SPACE / TAP TO RUN', 60, 124);
+      if (db) {                             // local hall of fame on the title screen
+        ctx.font = 'bold 13px "Courier New", monospace';
+        ctx.fillStyle = '#565e8c';
+        ctx.fillText('TOP RUNS', 60, 156);
+        ctx.font = '13px "Courier New", monospace';
+        dbTopScores(db, 5).forEach(([n, s], i) => {
+          ctx.fillStyle = i === 0 ? '#7ef0ff' : '#8b93c9';
+          ctx.fillText((i + 1) + '. ' + n, 60, 174 + i * 16);
+          ctx.textAlign = 'right'; ctx.fillText(String(s).padStart(5, '0'), 230, 174 + i * 16); ctx.textAlign = 'left';
+        });
+      }
     } else if (g.crashed) {
       ctx.fillStyle = '#ff8fb0';
       ctx.font = 'bold 22px "Courier New", monospace';
       ctx.fillText('GAME OVER', 60, 96);
-      ctx.font = 'bold 14px "Courier New", monospace';
-      ctx.fillStyle = '#8b93c9';
-      if (Math.floor(performance.now() / 600) % 2) ctx.fillText('SPACE / ENTER / TAP TO RETRY', 60, 124);
+    }
+    if (playerName) {
+      ctx.font = 'bold 13px "Courier New", monospace';
+      ctx.fillStyle = '#565e8c';
+      ctx.fillText(playerName, 20, 30);
     }
   }
 
   // --- input ---
   addEventListener('keydown', e => {
+    const t = e.target;                      // never steal keys from the name form
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'BUTTON' || t.isContentEditable)) return;
     if (JUMP_KEYS.includes(e.keyCode)) { e.preventDefault(); jumpDown(g); }
     else if (e.keyCode === DUCK_KEY) { e.preventDefault(); diveDown(g, true); }
     else if (e.keyCode === 13 && g.crashed) restart(g);
@@ -631,9 +745,13 @@ if (IS_BROWSER) {
   // --- main loop (dino: requestAnimationFrame-driven update) ---
   let last = performance.now();
   let prevHi = g.hiScore;
+  let wasCrashed = false;
   function frame(now) {
     const dt = now - last; last = now;
     step(g, dt);
+    if (g.crashed && !wasCrashed) onGameOver();
+    if (wasCrashed && !g.crashed) overlayEl.classList.add('hidden'); // any restart hides it
+    wasCrashed = g.crashed;
     drawBackground(now);
     drawRoof();
     const DRAW = { chimneySmall: drawChimney, chimneyLarge: drawChimney, dish: drawDish, ac: drawAC, drone: drawDrone };
@@ -776,5 +894,30 @@ if (!IS_BROWSER) {
     assert.ok(drone, 'drone must be able to spawn at speed 8');
   }
 
-  console.log('self-test OK (9 groups)');
+  (async () => {
+    const path = require('path');
+    const sqljs = require(path.join(__dirname, 'vendor', 'sql-wasm.js'));
+    const initSqlJs = sqljs.default || sqljs;   // UMD: module itself or .default
+    const { SQL_WASM_B64 } = require(path.join(__dirname, 'vendor', 'sql-wasm.b64.js'));
+    const SQL = await initSqlJs({ wasmBinary: Buffer.from(SQL_WASM_B64, 'base64') });
+
+    // 10. leaderboard: insert, ranking, LIMIT, and export/import persistence
+    {
+      const db = openScoresDb(SQL);
+      dbAddScore(db, 'cat', 100);
+      dbAddScore(db, 'bob', 300);
+      dbAddScore(db, 'ali', 200);
+      dbAddScore(db, 'cat', 250);
+      const top = dbTopScores(db, 10);
+      assert.deepStrictEqual(top, [['bob', 300], ['cat', 250], ['ali', 200], ['cat', 100]],
+        'scores must rank by score desc, insertion order tiebreak');
+      assert.strictEqual(dbTopScores(db, 2).length, 2, 'LIMIT must be respected');
+      const db2 = new SQL.Database(db.export());   // persistence round trip
+      db2.run(SCORES_DDL);                          // schema create is idempotent
+      assert.deepStrictEqual(dbTopScores(db2, 10), top, 'db must survive export/import');
+      db.close(); db2.close();
+    }
+
+    console.log('self-test OK (10 groups)');
+  })().catch(e => { console.error(e); process.exit(1); });
 }

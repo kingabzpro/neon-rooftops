@@ -12,6 +12,8 @@ for (const f of ['index.html', 'game.js']) {
   fs.copyFileSync(path.join(src, f), path.join(dst, f));
   console.log('copied', f);
 }
+fs.cpSync(path.join(src, 'vendor'), path.join(dst, 'vendor'), { recursive: true });
+console.log('copied vendor/');
 
 console.log('packaging (first run downloads Electron ~110 MB into npm cache)...');
 execSync(
