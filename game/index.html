@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neon Rooftops — endless runner</title>
+<title>Neon Rooftops, endless runner</title>
 <style>
   :root { color-scheme: dark; }
   body {
@@ -17,9 +17,9 @@
     text-transform: uppercase;
   }
   canvas {
-    width: min(900px, 96vw); image-rendering: pixelated; image-rendering: crisp-edges;
+    width: 100%; image-rendering: pixelated; image-rendering: crisp-edges;
     border: 2px solid #2b2f50; border-radius: 4px;
-    background: #0b0d24; touch-action: manipulation; cursor: pointer;
+    background: #0b0d24; touch-action: manipulation; cursor: pointer; display: block;
   }
   p { margin: 0; font-size: 12px; color: #565e8c; letter-spacing: 1px; }
   p b { color: #8b93c9; }
@@ -27,8 +27,25 @@
 </head>
 <body>
   <h1>Neon Rooftops</h1>
-  <canvas id="game" width="900" height="300"></canvas>
+  <div class="stage">
+    <canvas id="game" width="900" height="300"></canvas>
+    <div id="overlay" class="hidden">
+      <div class="panel">
+        <h2>GAME OVER</h2>
+        <p id="finalScore">SCORE 00000</p>
+        <form id="nameForm" class="hidden" autocomplete="off">
+          <input id="nameInput" maxlength="12" placeholder="your name" spellcheck="false">
+          <button type="submit">Save</button>
+        </form>
+        <ol id="board"></ol>
+        <p id="overlayHint">SPACE / ENTER to play again</p>
+        <button id="againBtn" type="button">▶ play again</button>
+      </div>
+    </div>
+  </div>
   <p><b>SPACE / ↑</b> jump &nbsp;·&nbsp; <b>↓</b> dive &nbsp;·&nbsp; <b>SPACE / ENTER / TAP</b> start &amp; retry</p>
+  <script src="vendor/sql-wasm.js"></script>
+  <script src="vendor/sql-wasm.b64.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
