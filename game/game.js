@@ -68,6 +68,7 @@ function getRandomNum(min, max) {          // dino getRandomNum: inclusive
 // --- leaderboard storage: real SQLite via sql.js, db passed in so this -----
 // --- works identically in the browser, Electron, and the Node self-test ---
 const DB_STORE_KEY = 'neonRoofDb';
+const DB_CLEAR_KEY = 'neonRoofDbCleared';   // one-time wipe marker for old junk rows
 const SCORES_DDL = 'CREATE TABLE IF NOT EXISTS scores(' +
   'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, ' +
   'score INTEGER NOT NULL, created_at TEXT DEFAULT (datetime(\'now\')))';
@@ -481,7 +482,12 @@ if (IS_BROWSER) {
   function submitRun() {                     // save the run under the typed name, then restart
     if (!awaitingName) return;
     awaitingName = false;
-    if (db) { dbAddScore(db, nameEntry.trim() || 'you', g.score); localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export())); refreshTop(); }
+    const name = nameEntry.trim();
+    if (db && name) {                        // only record runs the player actually named
+      dbAddScore(db, name, g.score);
+      localStorage.setItem(DB_STORE_KEY, bytesToB64(db.export()));
+      refreshTop();
+    }
     nameEntry = '';
     restart(g);
   }
@@ -494,6 +500,11 @@ if (IS_BROWSER) {
         try { db = new SQL.Database(b64ToBytes(saved)); db.run(SCORES_DDL); } catch (e) { db = null; }
       }
       if (!db) db = openScoresDb(SQL);
+      // wipe leaderboard rows left by older builds (the auto-saved "you" junk), once
+      if (localStorage.getItem(DB_CLEAR_KEY) !== '2') {
+        db.run('DELETE FROM scores');
+        localStorage.setItem(DB_CLEAR_KEY, '2');
+      }
       refreshTop();
     } catch (e) {
       console.warn('leaderboard unavailable, playing without it:', e);
@@ -764,8 +775,10 @@ if (IS_BROWSER) {
     ctx.restore();
   }
 
-  // squash and stretch state (render-side juice)
-  let stretchUntil = 0, squashUntil = 0;
+  // squash and stretch state (render-side juice). Counters, not absolute
+  // timestamps, so a restart (which resets g.timeMs) can never leave the cat
+  // stuck at a huge scale.
+  let stretchLeft = 0, squashLeft = 0;
   function drawCat() {
     let name = 'run1';
     if (g.crashed) name = 'crash';
@@ -773,8 +786,8 @@ if (IS_BROWSER) {
     else name = g.cat.frame ? 'run2' : 'run1';
     // stretch on takeoff, squash on landing, easing back to 1
     let sx = 1, sy = 1;
-    if (g.timeMs < stretchUntil) { const k = (stretchUntil - g.timeMs) / 130; sy = 1 + 0.16 * k; sx = 1 - 0.10 * k; }
-    else if (g.timeMs < squashUntil) { const k = (squashUntil - g.timeMs) / 130; sy = 1 - 0.20 * k; sx = 1 + 0.18 * k; }
+    if (stretchLeft > 0) { const k = stretchLeft / 130; sy = 1 + 0.16 * k; sx = 1 - 0.10 * k; }
+    else if (squashLeft > 0) { const k = squashLeft / 130; sy = 1 - 0.20 * k; sx = 1 + 0.18 * k; }
     const sw = CAT_W * sx, sh = CAT_H * sy;
     ctx.drawImage(sprites[name], CAT_X - (sw - CAT_W) / 2, g.roofY - sh - g.cat.y, sw, sh);
   }
@@ -864,7 +877,15 @@ if (IS_BROWSER) {
     if (JUMP_KEYS.includes(e.keyCode)) jumpUp(g);
     else if (e.keyCode === DUCK_KEY) diveDown(g, false);
   });
-  canvas.addEventListener('pointerdown', e => { e.preventDefault(); if (g.crashed && awaitingName) submitRun(); else jumpDown(g); });
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (g.crashed && awaitingName) {
+      // a stray mouse click must not skip naming; touch has no keyboard, so let it submit
+      if (nameEntry || (e.pointerType && e.pointerType !== 'mouse')) submitRun();
+      return;
+    }
+    jumpDown(g);
+  });
   addEventListener('pointerup', () => jumpUp(g));
 
   // --- main loop (dino: requestAnimationFrame-driven update) ---
@@ -884,11 +905,11 @@ if (IS_BROWSER) {
 
     // juice transitions
     if (!prevJumping && g.cat.jumping) {                                        // takeoff: stretch + sparkles
-      stretchUntil = g.timeMs + 130;
+      stretchLeft = 130;
       for (let i = 0; i < 4; i++) spawnSparkle(CAT_X + 4 + Math.random() * 20, g.roofY - g.cat.y - 8 - Math.random() * 12);
     }
     if (prevJumping && !g.cat.jumping && !g.crashed) {                         // landing: squash + dust
-      squashUntil = g.timeMs + 130;
+      squashLeft = 130;
       spawnBurst(CAT_X + CAT_W / 2, g.roofY - 2, 8, ['#8b93c9', '#565e8c', '#cdd3ff'], 1.6, true);
     }
     if (!g.started || (!g.cat.jumping && !g.crashed)) {                        // lazy running dust
@@ -934,6 +955,8 @@ if (IS_BROWSER) {
     }
     ctx.restore();
     if (g.hiScore !== prevHi) { localStorage.setItem('neonRoofHi', g.hiScore); prevHi = g.hiScore; }
+    stretchLeft = Math.max(0, stretchLeft - dt);   // decay the squash/stretch
+    squashLeft = Math.max(0, squashLeft - dt);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
