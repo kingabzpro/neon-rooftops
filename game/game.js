@@ -115,6 +115,29 @@ function mulberry32(seed) {
   };
 }
 
+// --- evolving night palette: sky and skyline tint drift with distance ------
+const SKY_PHASES = [
+  { at: 0,    top: [11, 13, 36], mid: [29, 23, 64], bot: [43, 28, 78], far: [25, 28, 60], near: [16, 18, 42] }, // indigo night
+  { at: 2500, top: [42, 10, 50], mid: [60, 20, 82], bot: [92, 32, 94], far: [44, 24, 74], near: [28, 16, 54] }, // magenta dusk
+  { at: 5500, top: [9, 30, 44],  mid: [16, 58, 74], bot: [26, 92, 88], far: [20, 48, 64], near: [14, 32, 48] }, // teal dawn
+  { at: 9000, top: [11, 13, 36], mid: [29, 23, 64], bot: [43, 28, 78], far: [25, 28, 60], near: [16, 18, 42] }, // cycle back
+];
+function themeColors(distance) {
+  const cycle = SKY_PHASES[SKY_PHASES.length - 1].at;
+  const d = ((distance % cycle) + cycle) % cycle;
+  let a = SKY_PHASES[0], b = SKY_PHASES[SKY_PHASES.length - 1];
+  for (let i = 0; i < SKY_PHASES.length - 1; i++) {
+    if (d >= SKY_PHASES[i].at && d <= SKY_PHASES[i + 1].at) { a = SKY_PHASES[i]; b = SKY_PHASES[i + 1]; break; }
+  }
+  const t = b.at === a.at ? 0 : (d - a.at) / (b.at - a.at);
+  const mix3 = (c1, c2) => c1.map((u, i) => Math.round(u + (c2[i] - u) * t));
+  return {
+    top: mix3(a.top, b.top), mid: mix3(a.mid, b.mid), bot: mix3(a.bot, b.bot),
+    far: mix3(a.far, b.far), near: mix3(a.near, b.near),
+  };
+}
+const cssRgb = c => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+
 // ============================================================================
 // ORIGINAL PIXEL ART - the cat. String maps, one char per pixel.
 // .  transparent   o orange   d dark-orange stripe   w cream
@@ -549,6 +572,74 @@ if (IS_BROWSER) {
   const FAR = makeSkyline(7, 26, 70, 150, 26, 64, 0.18);
   const NEAR = makeSkyline(11, 30, 18, 55, 34, 80, 0);
 
+  // --- juice: particles, streaks, shooting stars ---
+  const particles = [];
+  function spawnBurst(x, y, n, colors, power, up) {
+    for (let i = 0; i < n; i++) {
+      const ang = up ? (-Math.PI / 2) + (Math.random() - 0.5) * 2.2 : Math.random() * Math.PI * 2;
+      const sp = power * (0.4 + Math.random() * 0.6);
+      particles.push({
+        x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+        life: 350 + Math.random() * 400, max: 750,
+        size: Math.random() > 0.6 ? 3 : 2, grav: up ? 0.02 : 0.06,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+  }
+  function stepParticles(dt) {
+    const fe = dt / MS_PER_FRAME;
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * fe; p.y += p.vy * fe; p.vy += p.grav * fe; p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = Math.min(1, p.life / 250);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const streaks = Array.from({ length: 14 }, () => ({
+    x: Math.random() * W, y: 40 + Math.random() * (g.roofY - 90), len: 30 + Math.random() * 50,
+  }));
+  function drawSpeedLines(dt) {
+    if (g.speed < 8.2 || !g.started || g.crashed) return;
+    const fe = dt / MS_PER_FRAME;
+    const heat = Math.min(1, (g.speed - 8.2) / 4);   // 0..1 as we approach max speed
+    ctx.globalAlpha = 0.06 + 0.12 * heat;
+    ctx.fillStyle = '#aeb8ff';
+    for (const s of streaks) {
+      s.x -= (g.speed * 1.9) * fe;
+      if (s.x + s.len < 0) { s.x = W + Math.random() * 80; s.y = 40 + Math.random() * (g.roofY - 90); }
+      ctx.fillRect(s.x, s.y, s.len * (0.5 + heat), 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  let shootingStar = null, nextStarAt = 4000 + Math.random() * 6000;
+  function stepShootingStar(dt, t) {
+    if (!shootingStar && t > nextStarAt && !g.crashed) {
+      shootingStar = { x: W * (0.3 + Math.random() * 0.6), y: 20 + Math.random() * 60, life: 700 };
+      nextStarAt = t + 7000 + Math.random() * 9000;
+    }
+    if (shootingStar) {
+      const fe = dt / MS_PER_FRAME;
+      shootingStar.x -= 7 * fe; shootingStar.y += 2.4 * fe; shootingStar.life -= dt;
+      ctx.globalAlpha = Math.min(1, shootingStar.life / 300);
+      ctx.fillStyle = '#eef1ff';
+      ctx.fillRect(shootingStar.x, shootingStar.y, 4, 2);
+      ctx.globalAlpha *= 0.5;
+      ctx.fillRect(shootingStar.x + 4, shootingStar.y - 2, 8, 1);
+      ctx.fillRect(shootingStar.x + 4, shootingStar.y + 2, 6, 1);
+      ctx.globalAlpha = 1;
+      if (shootingStar.life <= 0 || shootingStar.x < -20) shootingStar = null;
+    }
+  }
+
   function drawSkyline(layer, scroll, baseY, bodyColor, winOn, winOff) {
     const off = scroll % layer.span;
     for (let rep = -1; rep <= Math.ceil(W / layer.span); rep++) {
@@ -574,12 +665,13 @@ if (IS_BROWSER) {
     }
   }
 
-  function drawBackground(t) {
-    // sky gradient
+  function drawBackground(t, dt) {
+    const th = themeColors(g.distanceRan);
+    // sky gradient, slowly evolving with distance
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0b0d24');
-    grad.addColorStop(0.7, '#1d1740');
-    grad.addColorStop(1, '#2b1c4e');
+    grad.addColorStop(0, cssRgb(th.top));
+    grad.addColorStop(0.7, cssRgb(th.mid));
+    grad.addColorStop(1, cssRgb(th.bot));
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
     // stars (twinkle)
@@ -589,14 +681,18 @@ if (IS_BROWSER) {
       ctx.fillRect(s.x, s.y, s.s, s.s);
     }
     ctx.globalAlpha = 1;
-    // crescent moon
+    stepShootingStar(dt, t);
+    // crescent moon with soft glow
+    ctx.save();
+    ctx.shadowColor = '#cfd4ff'; ctx.shadowBlur = 24;
     ctx.fillStyle = '#ece9ff';
     ctx.beginPath(); ctx.arc(W - 160, 54, 17, 0, 7); ctx.fill();
-    ctx.fillStyle = '#0b0d24';
+    ctx.restore();
+    ctx.fillStyle = cssRgb(th.top);
     ctx.beginPath(); ctx.arc(W - 152, 48, 15, 0, 7); ctx.fill();
-    // skylines (parallax)
-    drawSkyline(FAR, g.distanceRan * 0.15, g.roofY + 6, '#191c3c', '#a8823f', '#141632');
-    drawSkyline(NEAR, g.distanceRan * 0.4, g.roofY + 4, '#10122a', '#2a2f55', '#0c0e22');
+    // skylines (parallax), tinted by the current phase
+    drawSkyline(FAR, g.distanceRan * 0.15, g.roofY + 6, cssRgb(th.far), '#a8823f', '#141632');
+    drawSkyline(NEAR, g.distanceRan * 0.4, g.roofY + 4, cssRgb(th.near), '#2a2f55', '#0c0e22');
   }
 
   function drawRoof() {
@@ -634,8 +730,11 @@ if (IS_BROWSER) {
     const x = ob.x, y = ob.y;
     ctx.fillStyle = '#4a5382';
     ctx.fillRect(x + 6, y + 4, 18, 10);            // body
+    ctx.save();
+    ctx.shadowColor = '#7ef0ff'; ctx.shadowBlur = 8;
     ctx.fillStyle = '#7ef0ff';
     ctx.fillRect(x + 10, y + 7, 6, 4);             // lens
+    ctx.restore();
     ctx.fillStyle = '#ff5566';                     // tail beacon (blinks)
     if (Math.floor(g.timeMs / 300) % 2) ctx.fillRect(x + 26, y + 8, 3, 3);
     ctx.fillStyle = '#cdd3ff';                     // rotor, 2 frames
@@ -651,8 +750,11 @@ if (IS_BROWSER) {
     ctx.fillRect(x + 2, y + 8, 18, 4);
     ctx.fillRect(x + 4, y + 4, 14, 4);
     ctx.fillRect(x + 7, y + 1, 8, 3);
+    ctx.save();
+    ctx.shadowColor = '#7ef0ff'; ctx.shadowBlur = 10;
     ctx.fillStyle = Math.floor(g.timeMs / 500) % 2 ? '#7ef0ff' : '#2a4a66';
     ctx.fillRect(x + 11, y, 3, 3);        // blinking feed horn
+    ctx.restore();
     ctx.fillStyle = '#4a5382';            // stalk + base
     ctx.fillRect(x + 9, y + 12, 4, 18);
     ctx.fillStyle = '#3a4066';
@@ -670,16 +772,26 @@ if (IS_BROWSER) {
     ctx.fillStyle = '#232550';            // fan well + grill slats
     ctx.fillRect(x + 5, y + 6, 11, 8);
     for (let i = 0; i < 3; i++) ctx.fillRect(x + 20, y + 6 + i * 4, 11, 2);
+    ctx.save();
+    ctx.shadowColor = '#7ef0ff'; ctx.shadowBlur = 9;
     ctx.fillStyle = Math.floor(g.timeMs / 400) % 2 ? '#7ef0ff' : '#3d5a70';
     ctx.fillRect(x + 9, y + 9, 3, 3);     // compressor light
+    ctx.restore();
   }
 
+  // squash and stretch state (render-side juice)
+  let stretchUntil = 0, squashUntil = 0;
   function drawCat() {
     let name = 'run1';
     if (g.crashed) name = 'crash';
     else if (g.cat.jumping) name = g.cat.vy > 0 ? 'jump' : 'fall';
     else name = g.cat.frame ? 'run2' : 'run1';
-    ctx.drawImage(sprites[name], CAT_X, g.roofY - CAT_H - g.cat.y);
+    // stretch on takeoff, squash on landing, easing back to 1
+    let sx = 1, sy = 1;
+    if (g.timeMs < stretchUntil) { const k = (stretchUntil - g.timeMs) / 130; sy = 1 + 0.16 * k; sx = 1 - 0.10 * k; }
+    else if (g.timeMs < squashUntil) { const k = (squashUntil - g.timeMs) / 130; sy = 1 - 0.20 * k; sx = 1 + 0.18 * k; }
+    const sw = CAT_W * sx, sh = CAT_H * sy;
+    ctx.drawImage(sprites[name], CAT_X - (sw - CAT_W) / 2, g.roofY - sh - g.cat.y, sw, sh);
   }
 
   function drawHUD() {
@@ -745,19 +857,61 @@ if (IS_BROWSER) {
   // --- main loop (dino: requestAnimationFrame-driven update) ---
   let last = performance.now();
   let prevHi = g.hiScore;
+  let prevJumping = false, prevCrashed = false, prevAchievement = false;
+  let shakeUntil = 0, crashFlashUntil = 0, nextRunDust = 0;
   let wasCrashed = false;
   function frame(now) {
     const dt = now - last; last = now;
     step(g, dt);
+
+    // leaderboard overlay transitions
     if (g.crashed && !wasCrashed) onGameOver();
     if (wasCrashed && !g.crashed) overlayEl.classList.add('hidden'); // any restart hides it
     wasCrashed = g.crashed;
-    drawBackground(now);
+
+    // juice transitions
+    if (!prevJumping && g.cat.jumping) stretchUntil = g.timeMs + 130;           // takeoff: stretch
+    if (prevJumping && !g.cat.jumping && !g.crashed) {                         // landing: squash + dust
+      squashUntil = g.timeMs + 130;
+      spawnBurst(CAT_X + CAT_W / 2, g.roofY - 2, 8, ['#8b93c9', '#565e8c', '#cdd3ff'], 1.6, true);
+    }
+    if (!g.started || (!g.cat.jumping && !g.crashed)) {                        // lazy running dust
+      if (now > nextRunDust) {
+        nextRunDust = now + 170 + Math.random() * 160;
+        spawnBurst(CAT_X + 2, g.roofY - 2, 1, ['#565e8c'], 0.8, true);
+      }
+    }
+    if (!prevAchievement && g.achievement) {                                   // milestone burst
+      spawnBurst(W - 70, 34, 18, ['#7ef0ff', '#ff8fb0', '#ffe9c4', '#5df08a'], 2.6, false);
+    }
+    if (!prevCrashed && g.crashed) {                                           // crash: shake + flash + burst
+      shakeUntil = now + 350;
+      crashFlashUntil = now + 420;
+      spawnBurst(CAT_X + CAT_W / 2, g.roofY - CAT_H / 2, 26,
+        ['#f39b3f', '#ff8fb0', '#ffe9c4', '#f39b3f'], 3, false);
+    }
+    prevJumping = g.cat.jumping; prevCrashed = g.crashed; prevAchievement = g.achievement;
+    stepParticles(dt);
+
+    // draw, with a decaying screen shake while the crash flash lasts
+    ctx.save();
+    if (now < shakeUntil) {
+      const k = (shakeUntil - now) / 350;
+      ctx.translate((Math.random() - 0.5) * 10 * k, (Math.random() - 0.5) * 8 * k);
+    }
+    drawBackground(now, dt);
+    drawSpeedLines(dt);
     drawRoof();
     const DRAW = { chimneySmall: drawChimney, chimneyLarge: drawChimney, dish: drawDish, ac: drawAC, drone: drawDrone };
     for (const ob of g.obstacles) DRAW[ob.name](ob);
     drawCat();
+    drawParticles();
     drawHUD();
+    if (now < crashFlashUntil) {                // red flash vignette on crash
+      ctx.fillStyle = 'rgba(255, 90, 130, ' + (0.28 * (crashFlashUntil - now) / 420) + ')';
+      ctx.fillRect(-10, -10, W + 20, H + 20);
+    }
+    ctx.restore();
     if (g.hiScore !== prevHi) { localStorage.setItem('neonRoofHi', g.hiScore); prevHi = g.hiScore; }
     requestAnimationFrame(frame);
   }
@@ -894,6 +1048,16 @@ if (!IS_BROWSER) {
     assert.ok(drone, 'drone must be able to spawn at speed 8');
   }
 
+  // 10. the night palette must visibly evolve and cycle
+  {
+    const dRGB = (x, y) => Math.abs(x[0] - y[0]) + Math.abs(x[1] - y[1]) + Math.abs(x[2] - y[2]);
+    const night = themeColors(0), dusk = themeColors(2250), dawn = themeColors(4100);
+    assert.ok(dRGB(night.top, dusk.top) > 15, 'night and dusk skies must differ');
+    assert.ok(dRGB(dusk.top, dawn.top) > 15, 'dusk and dawn skies must differ');
+    assert.ok(dRGB(night.near, dawn.near) > 10, 'skyline tint must shift with the sky');
+    assert.deepStrictEqual(themeColors(9000).top, themeColors(0).top, 'palette must wrap cleanly');
+  }
+
   (async () => {
     const path = require('path');
     const sqljs = require(path.join(__dirname, 'vendor', 'sql-wasm.js'));
@@ -901,7 +1065,7 @@ if (!IS_BROWSER) {
     const { SQL_WASM_B64 } = require(path.join(__dirname, 'vendor', 'sql-wasm.b64.js'));
     const SQL = await initSqlJs({ wasmBinary: Buffer.from(SQL_WASM_B64, 'base64') });
 
-    // 10. leaderboard: insert, ranking, LIMIT, and export/import persistence
+    // 11. leaderboard: insert, ranking, LIMIT, and export/import persistence
     {
       const db = openScoresDb(SQL);
       dbAddScore(db, 'cat', 100);
@@ -918,6 +1082,6 @@ if (!IS_BROWSER) {
       db.close(); db2.close();
     }
 
-    console.log('self-test OK (10 groups)');
+    console.log('self-test OK (11 groups)');
   })().catch(e => { console.error(e); process.exit(1); });
 }
